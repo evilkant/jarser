@@ -16,9 +16,11 @@ func TestParseKeyword(t *testing.T) {
 		"true",
 		"false",
 		"null",
-		`"a simple string"`,
+		`"a string"`,
+		`"a 中文 string"`,
+		`-1.23`,
 		`[true,false,true]`,
-		`{"hobbies":["football","basketball"],"name":"lihua"}`,
+		`{"age":23,"hobbies":["football","basketball"],"name":"lihua"}`,
 	}
 	for _, raw := range tcs {
 		res, err := Parse(raw)
@@ -26,9 +28,9 @@ func TestParseKeyword(t *testing.T) {
 			t.Errorf("%s", err.Error())
 		}
 		fmt.Println("result is: ", res)
-		resString := toString(res)
-		if resString != raw {
-			t.Errorf("%s failed, resString is %s", raw, resString)
+		stringRes := toString(res)
+		if stringRes != raw {
+			t.Errorf("%s failed, res string is %s", raw, stringRes)
 		}
 	}
 }
