@@ -4,21 +4,18 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 	"unicode"
 	"unicode/utf8"
 )
 
-func Parse(raw string) (any, error) {
-	raw = squashWhiteSpace(raw)
+func Parse(raw string) (*value, error) {
 	p := newParser(raw)
 	return p.parseValue()
 }
 
 type parser struct {
-	s   string
-	i   int // the index of the next rune to be processed
-	err error
+	s string
+	i int // the index of the next rune to be processed
 }
 
 func (p *parser) advance() {
@@ -57,7 +54,7 @@ func (p *parser) advanceOneThenGetRune() rune {
 	return p.getRune()
 }
 
-func (p *parser) parseValue() (any, error) {
+func (p *parser) parseValue() (*value, error) {
 	r := p.getRune()
 	if r == 't' {
 		return p.parseTrue()
@@ -104,30 +101,30 @@ func (p *parser) matchLiteral(literal string) error {
 	return fmt.Errorf("expect '%s', but got '%s'..", literal, s)
 }
 
-func (p *parser) parseTrue() (bool, error) {
+func (p *parser) parseTrue() (*value, error) {
 	if err := p.matchLiteral("true"); err != nil {
-		return false, err
+		return nil, err
 	}
-	return true, nil
+	return &value{t: _true}, nil
 }
 
-func (p *parser) parseFalse() (bool, error) {
+func (p *parser) parseFalse() (*value, error) {
 	if err := p.matchLiteral("false"); err != nil {
-		return false, err
+		return nil, err
 	}
-	return false, nil
+	return &value{t: _false}, nil
 }
 
-func (p *parser) parseNull() (any, error) {
+func (p *parser) parseNull() (*value, error) {
 	if err := p.matchLiteral("null"); err != nil {
 		return nil, err
 	}
-	return nil, nil
+	return &value{t: _null}, nil
 }
 
-func (p *parser) parseString() (string, error) {
+func (p *parser) parseString() (*value, error) {
 	if p.getRune() != '"' {
-		return "", errors.New("expect '\"'")
+		return nil, errors.New("expect '\"'")
 	}
 	p.advance()
 
@@ -139,7 +136,7 @@ func (p *parser) parseString() (string, error) {
 		}
 		nr := p.peekRune(1)
 		if nr == emptyRune {
-			return "", errors.New("expect rune after '\\'")
+			return nil, errors.New("expect rune after '\\'")
 		}
 		switch nr {
 		case 't':
@@ -154,15 +151,15 @@ func (p *parser) parseString() (string, error) {
 		p.advance()
 	}
 	if p.getRune() == emptyRune {
-		return "", errors.New("string not closed")
+		return nil, errors.New("string not closed")
 	}
 	p.advance()
-	return str, nil
+	return &value{t: _string, str: str}, nil
 }
 
-func (p *parser) parseNumber() (float64, error) {
+func (p *parser) parseNumber() (*value, error) {
 	if r := p.getRune(); r != '-' && !unicode.IsDigit(r) {
-		return 0, errors.New("expect minus sign or digit")
+		return nil, errors.New("expect minus sign or digit")
 	}
 
 	numStr := ""
@@ -179,7 +176,7 @@ func (p *parser) parseNumber() (float64, error) {
 		numStr += "."
 		p.advance()
 		if !unicode.IsDigit(p.getRune()) {
-			return 0, errors.New("expect digit after '.'")
+			return nil, errors.New("expect digit after '.'")
 		}
 	}
 	for r = p.getRune(); r != emptyRune && unicode.IsDigit(r); r = p.advanceOneThenGetRune() {
@@ -188,29 +185,30 @@ func (p *parser) parseNumber() (float64, error) {
 
 	f, err := strconv.ParseFloat(numStr, 64)
 	if err != nil {
-		return 0, fmt.Errorf("cannot parse %s as float", numStr)
+		return nil, fmt.Errorf("cannot parse %s as float", numStr)
 	}
 
-	return f, nil
+	return &value{t: _number, num: f}, nil
 }
 
 func newParser(raw string) *parser {
 	return &parser{s: raw, i: 0}
 }
 
-func (p *parser) parseArray() ([]any, error) {
+func (p *parser) parseArray() (*value, error) {
 	if p.getRune() != '[' {
 		return nil, errors.New("expect '['")
 	}
 	p.advance()
 
-	var res []any
+	var res []*value
 	for r := p.getRune(); r != emptyRune && r != ']'; r = p.getRune() {
 		p.skipWhiteSpaces()
 		val, err := p.parseValue()
 		if err != nil {
 			return nil, err
 		}
+
 		res = append(res, val)
 
 		p.skipWhiteSpaces()
@@ -226,16 +224,17 @@ func (p *parser) parseArray() ([]any, error) {
 		return nil, errors.New("array not closed")
 	}
 	p.advance()
-	return res, nil
+
+	return &value{t: _array, arr: res}, nil
 }
 
-func (p *parser) parseObject() (any, error) {
+func (p *parser) parseObject() (*value, error) {
 	if p.getRune() != '{' {
 		return nil, errors.New("expect '{'")
 	}
 	p.advance()
 
-	object := make(map[string]any)
+	object := make(map[string]*value)
 
 	for r := p.getRune(); r != emptyRune && r != '}'; r = p.getRune() {
 		p.skipWhiteSpaces()
@@ -251,7 +250,7 @@ func (p *parser) parseObject() (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		object[name] = value
+		object[name.str] = value
 		p.skipWhiteSpaces()
 		if p.getRune() == '}' {
 			break
@@ -265,15 +264,11 @@ func (p *parser) parseObject() (any, error) {
 		return nil, errors.New("object not closed")
 	}
 	p.advance()
-	return object, nil
+	return &value{t: _object, obj: object}, nil
 }
 
 func (p *parser) skipWhiteSpaces() {
 	for unicode.IsSpace(p.getRune()) {
 		p.advance()
 	}
-}
-
-func squashWhiteSpace(raw string) string {
-	return strings.Join(strings.Fields(raw), " ")
 }

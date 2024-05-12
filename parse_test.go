@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"testing"
 )
 
@@ -27,8 +26,7 @@ func TestParseKeyword(t *testing.T) {
 		if err != nil {
 			t.Errorf("%s", err.Error())
 		}
-		fmt.Println("result is: ", res)
-		stringRes := toString(res)
+		stringRes := res.Generate()
 		if stringRes != raw {
 			t.Errorf("%s failed, res string is %s", raw, stringRes)
 		}
