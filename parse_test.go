@@ -10,7 +10,7 @@ func toString(v interface{}) string {
 	return string(s)
 }
 
-func TestParseKeyword(t *testing.T) {
+func TestParse(t *testing.T) {
 	tcs := []string{
 		"true",
 		"false",
@@ -31,4 +31,21 @@ func TestParseKeyword(t *testing.T) {
 			t.Errorf("%s failed, res string is %s", raw, stringRes)
 		}
 	}
+}
+
+func TestGet(t *testing.T) {
+	raw := `{"info":{"age":23,"hobbies":["football","basketball"],"name":"lihua"}}`
+	path := "info.hobbies.#1"
+	val, err := Get(raw, path)
+	if err != nil {
+		t.Errorf("%s", err.Error())
+	}
+	hobby, ok := val.(string)
+	if !ok {
+		t.Errorf("%v not a string", val)
+	}
+	if hobby != "basketball" {
+		t.Errorf("%s not basketball", hobby)
+	}
+	t.Logf("hobby is %s", hobby)
 }

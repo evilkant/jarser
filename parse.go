@@ -3,7 +3,9 @@ package main
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
+	"strings"
 	"unicode"
 	"unicode/utf8"
 )
@@ -11,6 +13,23 @@ import (
 func Parse(raw string) (*value, error) {
 	p := newParser(raw)
 	return p.parseValue()
+}
+
+func Get(raw string, path string) (any, error) {
+	p := newParser(raw)
+	val, err := p.parseValue()
+	if err != nil {
+		return nil, err
+	}
+
+	keys := strings.Split(path, ".")
+	for _, k := range keys {
+		val, err = val.Access(k)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return val.Value(), nil
 }
 
 type parser struct {
@@ -271,4 +290,123 @@ func (p *parser) skipWhiteSpaces() {
 	for unicode.IsSpace(p.getRune()) {
 		p.advance()
 	}
+}
+
+type value struct {
+	t   _type
+	str string
+	num float64 // todo: a json nunmber type would be better
+	arr []*value
+	obj map[string]*value
+}
+
+type _type int32
+
+const (
+	_ _type = iota
+	_true
+	_false
+	_null
+	_string
+	_number
+	_array
+	_object
+)
+
+func (v *value) Generate() string {
+	if v.t == _true {
+		return "true"
+	}
+	if v.t == _false {
+		return "false"
+	}
+	if v.t == _null {
+		return "null"
+	}
+	if v.t == _string {
+		return fmt.Sprintf("\"%s\"", v.str)
+	}
+	if v.t == _number {
+		if float64(int64(v.num)) == v.num {
+			return fmt.Sprintf("%d", int64(v.num))
+		}
+		return fmt.Sprintf("%.2f", v.num)
+	}
+	if v.t == _array {
+		strs := make([]string, 0, len(v.arr))
+		for _, elem := range v.arr {
+			str := elem.Generate()
+			strs = append(strs, str)
+		}
+		return fmt.Sprintf("[%s]", strings.Join(strs, ","))
+	}
+	if v.t == _object {
+		strs := make([]string, 0, len(v.obj))
+		for name, val := range v.obj {
+			str := fmt.Sprintf("\"%s\":%s", name, val.Generate())
+			strs = append(strs, str)
+		}
+		sort.Strings(strs)
+		return fmt.Sprintf("{%s}", strings.Join(strs, ","))
+	}
+	return "the answer is 42"
+}
+
+func (v *value) Value() any {
+	if v.t == _true {
+		return true
+	}
+	if v.t == _false {
+		return false
+	}
+	if v.t == _null {
+		return nil
+	}
+	if v.t == _string {
+		return v.str
+	}
+	if v.t == _number {
+		return v.num
+	}
+	if v.t == _array {
+		ret := make([]any, 0, len(v.arr))
+		for _, e := range v.arr {
+			ret = append(ret, e.Value())
+		}
+		return ret
+	}
+	if v.t == _object {
+		ret := make(map[string]any)
+		for k, v := range v.obj {
+			ret[k] = v.Value()
+		}
+		return ret
+	}
+	return nil
+}
+
+func (v *value) Access(key string) (*value, error) {
+	if strings.HasPrefix(key, "#") {
+		idx, err := strconv.Atoi(key[1:])
+		if err != nil {
+			return nil, err
+		}
+		if v.t != _array {
+			return nil, errors.New("not an array")
+		}
+		if idx >= len(v.arr) {
+			return nil, errors.New("index out of bound")
+		}
+		return v.arr[idx], nil
+	}
+
+	if v.t != _object {
+		return nil, errors.New("not an object")
+	}
+
+	val, ok := v.obj[key]
+	if !ok {
+		return nil, fmt.Errorf("key %s not found", key)
+	}
+	return val, nil
 }
